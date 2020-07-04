@@ -21,7 +21,7 @@ class OEOptions:
         self.use_hybrid = True
         self.high_resolution = True
         self.cache_receptor = True
-        self.cache_receptor_clear = True
+        self.cache_receptor_clear = False
 
         self.num_poses = 1
         self.nan_to_none = True
@@ -77,6 +77,9 @@ def init_oedock_from_receptor(receptor, oe_options=None):
     dockResolution = oedocking.OESearchResolution_High if oe_options.high_resolution else oedocking.OESearchResolution_Default
     dock = oedocking.OEDock(dockMethod, dockResolution)
     assert (dock.Initialize(receptor))
+
+    if (not oedocking.OEReceptorHasCachedScore(receptor)) and oe_options.cache_receptor:
+        dock.CacheScoringSetup(receptor, clearOldData=oe_options.cache_receptor_clear)
     return dock
 
 def receptor_from_file(receptor_filename):
@@ -94,8 +97,6 @@ def setup_receptor_from_file(receptor_filename, oe_options=None):
     receptor = receptor_from_file(receptor_filename)
     dock = init_oedock_from_receptor(receptor, oe_options)
 
-    if oe_options.cache_receptor:
-        dock.CacheScoringSetup(receptor, clearOldData=oe_options.clear_old_receptor)
     return dock, receptor
 
 
@@ -103,7 +104,6 @@ def dock_molecule(smiles, dock_obj, oe_options=None):
     oe_options = oe_options or OEOptions()
 
     scores = []
-    print(smiles, dock_obj)
     confs = enumerate_from_smiles(smiles, oe_options=oe_options)
     for conf in confs:
         if conf is None:

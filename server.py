@@ -1,5 +1,7 @@
+import copy
 import socket
 
+import parsl
 from parsl.config import Config
 from parsl.executors import ThreadPoolExecutor
 
@@ -8,14 +10,15 @@ try:
 except ImportError:
     from socketserver import ThreadingMixIn
 
+import numpy as np
+
 from openeye import oechem, oedocking
 
 from xmlrpc.client import Binary
+
 from xmlrpc.server import SimpleXMLRPCServer, SimpleXMLRPCRequestHandler
 
-from engines.oe import oedock_from_smiles, setup_receptor_from_file, OEOptions
 import argparse
-import parsl
 
 class OEDockingServer:
     def __init__(self, receptors, names):
@@ -27,34 +30,70 @@ class OEDockingServer:
         for res in zip(receptors, names):
             self.get_receptor(*res)
 
-    def get_receptor(self, receptor, name):
-        self.receptors = {}
+    def AddReceptor(self, receptor, name):
         if isinstance(receptor, Binary):
             receptor_mol = oechem.OEGraphMol()
             oedocking.OEReadReceptorFromBytes(receptor_mol, '.oeb', receptor.data)
-            self.receptors[name] = receptor_mol
-        elif name not in self.receptors:
-            _, receptor = setup_receptor_from_file(receptor)
-            self.receptors[name] = receptor
-        return self.receptors[name]
+            self.receptors[name] = oechem.OEGraphMol(receptor_mol)
+        else:
+            _, receptor_mol = setup_receptor_from_file(receptor)
+            self.receptors[name] = oechem.OEGraphMol(receptor_mol)
 
-    def SubmitQuery(self, smiles, receptor, receptor_name, oe_options=None):
+    def get_receptor(self, receptor, name):
+        if name in self.receptors:
+            return oechem.OEGraphMol(self.receptors[name])
+        elif isinstance(receptor, Binary):
+            receptor_mol = oechem.OEGraphMol()
+            oedocking.OEReadReceptorFromBytes(receptor_mol, '.oeb', receptor.data)
+            self.receptors[name] = receptor_mol
+            return receptor_mol
+        else:
+            _, receptor_mol = setup_receptor_from_file(receptor)
+            self.receptors[name] = receptor_mol
+            return receptor_mol
+
+    def SubmitQuery(self, smiles, receptormol, receptor_name, oe_options=None):
+        receptor = self.get_receptor(receptormol, receptor_name)
         if oe_options is None:
             oe_options = OEOptions()
         else:
             oe_options = OEOptions(**oe_options)
 
-        receptor = self.get_receptor(receptor, receptor_name)
         self.idx += 1
-        self.results[self.idx] = oedock_from_smiles(receptor, smiles, oe_options=oe_options)
+        if isinstance(smiles, list):
+            self.results[self.idx] = []
+            for smile in smiles :
+                # receptor_ = self.get_receptor(receptor, receptor_name)
+
+                idx_ =  oedock_from_smiles(receptor, smile, oe_options=oe_options)
+                self.results[self.idx].append(idx_)
+                print("sent", smile, idx_, self.idx)
+        else:
+            idx_ =  oedock_from_smiles(receptor, smiles, oe_options=oe_options)
+            self.results[self.idx] = idx_
+            print("sent", smiles, idx_, self.idx)
+
         return self.idx
 
     def QueryStatus(self, queryidx):
-        return self.results[queryidx].done()
+        if not isinstance(self.results[queryidx], list):
+            print("no list")
+            return self.results[queryidx].done()
+        else:
+            done = True
+            for res in self.results[queryidx]:
+                done = done and res.done()
+            return done
 
     def QueryResults(self, queryidx):
-        results = self.results[queryidx].result()
-        del self.results[queryidx]
+        if not isinstance(self.results[queryidx], list):
+            print("no list")
+            results = self.results[queryidx].result()
+        else:
+            results = []
+            for res in self.results[queryidx]:
+                results.append(res.result())
+            print(results)
         return results
 
 
@@ -126,14 +165,19 @@ def get_args():
 
 
 if __name__ == '__main__':
+
     args = get_args()
 
     config = Config(
         executors=[
-            ThreadPoolExecutor(max_threads=args.n_jobs)
+            ThreadPoolExecutor(max_threads=8)
         ],
     )
 
-    parsl.load()
     print("Parsl loaded.")
+
+    from engines.oe import oedock_from_smiles, setup_receptor_from_file, OEOptions
+
+    parsl.load(config)
+
     sender(args.a, args.p, args.receptors, args.names)
