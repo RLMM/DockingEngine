@@ -13,7 +13,7 @@ from openeye import oechem, oedocking
 from xmlrpc.client import Binary
 from xmlrpc.server import SimpleXMLRPCServer, SimpleXMLRPCRequestHandler
 
-from engines.oe import get_dock_obj, oedock_from_smiles
+from engines.oe import oedock_from_smiles, setup_receptor_from_file, OEOptions
 import argparse
 import parsl
 
@@ -28,19 +28,25 @@ class OEDockingServer:
             self.get_receptor(*res)
 
     def get_receptor(self, receptor, name):
+        self.receptors = {}
         if isinstance(receptor, Binary):
             receptor_mol = oechem.OEGraphMol()
             oedocking.OEReadReceptorFromBytes(receptor_mol, '.oeb', receptor.data)
             self.receptors[name] = receptor_mol
         elif name not in self.receptors:
-            _, receptor = get_dock_obj(receptor)
+            _, receptor = setup_receptor_from_file(receptor)
             self.receptors[name] = receptor
         return self.receptors[name]
 
-    def SubmitQuery(self, smiles, receptor, receptor_name):
+    def SubmitQuery(self, smiles, receptor, receptor_name, oe_options=None):
+        if oe_options is None:
+            oe_options = OEOptions()
+        else:
+            oe_options = OEOptions(**oe_options)
+
         receptor = self.get_receptor(receptor, receptor_name)
         self.idx += 1
-        self.results[self.idx] = oedock_from_smiles(receptor, smiles)
+        self.results[self.idx] = oedock_from_smiles(receptor, smiles, oe_options=oe_options)
         return self.idx
 
     def QueryStatus(self, queryidx):

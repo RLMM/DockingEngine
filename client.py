@@ -7,6 +7,7 @@ from xmlrpc.client import ServerProxy, Binary, Fault
 
 from openeye import oechem, oedocking
 
+from engines.oe import OEOptions
 
 class DockingClient:
     def __init__(self, hostname, port):
@@ -16,7 +17,11 @@ class DockingClient:
     def __call__(self, smiles, receptor_name, receptor=None, receptor_path=None):
         receptor = self.get_receptor_from_request(receptor, receptor_path)
         s = ServerProxy("http://" + f'{self.hostname}:{self.port}')
-        idx = s.SubmitQuery(smiles, receptor, receptor_name)
+
+        opts = OEOptions()
+        opts.high_resolution = False
+
+        idx = s.SubmitQuery(smiles, receptor, receptor_name, opts)
 
         not_done = True
         while not_done:
@@ -61,7 +66,9 @@ def main(args):
     receptor = oechem.OEGraphMol()
     oedocking.OEReadReceptorFile(receptor, args.r)
     client = DockingClient(hostname, port)
-    client(smiles, receptor_name, receptor=receptor)
+    score = client(smiles, receptor_name, receptor=receptor)
+
+    print(score)
 
     return 0
 
