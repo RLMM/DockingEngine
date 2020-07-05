@@ -40,7 +40,7 @@ def enumerate_from_smiles(smiles, oe_options=None):
     oe_options = oe_options or OEOptions()
 
     omegaOpts = oeomega.OEOmegaOptions(oeomega.OEOmegaSampling_Pose)
-    omegaOpts.SetMaxSearchTime(30)
+    omegaOpts.SetMaxSearchTime(60)
     omega = oeomega.OEOmega(omegaOpts)
 
     if oe_options.use_tautomer:

@@ -10,7 +10,10 @@ try:
     from SocketServer import ThreadingMixIn
 except ImportError:
     from socketserver import ThreadingMixIn
-
+from threading import Thread
+from threading import Lock
+from threading import Condition
+from threading import Event
 from openeye import oechem, oedocking
 
 from xmlrpc.client import Binary
@@ -18,6 +21,54 @@ from xmlrpc.client import Binary
 from xmlrpc.server import SimpleXMLRPCServer, SimpleXMLRPCRequestHandler
 
 import argparse
+
+
+class ReadWriteLock(object):
+    """ Basic locking primitive that allows multiple readers but only
+    a single writer at a time. Useful for synchronizing database
+    updates. Priority is given to pending writers. """
+    def __init__(self):
+        self.cond = Condition()
+        self.readers = 0
+        self.writers = 0
+
+    def AcquireReadLock(self):
+        self.cond.acquire()
+        try:
+            while self.writers:
+                self.cond.wait()
+
+            self.readers += 1
+            assert self.writers == 0
+        finally:
+            self.cond.notifyAll()
+            self.cond.release()
+
+    def ReleaseReadLock(self):
+        self.cond.acquire()
+        assert self.readers > 0
+        try:
+            self.readers -= 1
+        finally:
+            self.cond.notifyAll()
+            self.cond.release()
+
+    def AcquireWriteLock(self):
+        self.cond.acquire()
+        self.writers += 1
+        while self.readers:
+            self.cond.wait()
+
+        assert self.readers == 0
+        assert self.writers > 0
+
+    def ReleaseWriteLock(self):
+        assert self.readers == 0
+        assert self.writers > 0
+
+        self.writers -= 1
+        self.cond.notifyAll()
+        self.cond.release()
 
 class OEDockingServer:
     def __init__(self, receptors, names):
@@ -27,6 +78,7 @@ class OEDockingServer:
         self.done_arr = {}
         self.waiting_futures = {}
         self.query_time = {}
+        self.lock = Lock()
 
         assert (len(receptors) == len(names))
         for res in zip(receptors, names):
@@ -61,24 +113,36 @@ class OEDockingServer:
         else:
             oe_options = OEOptions(**oe_options)
 
-        self.idx += 1
+        self.lock.acquire()
+        try:
+            self.idx += 1
+            cur_idx = self.idx
+        except:
+            exit()
+        finally:
+            self.lock.release()
+
         if isinstance(smiles, list):
-            self.results[self.idx] = []
-            self.done_arr[self.idx] = []
-            self.waiting_futures[self.idx] = []
-            self.query_time[self.idx] = time.time()
+            results_ = []
+            done_arr_ = []
+            waiting_futures_ = []
 
             for i, smile in enumerate(smiles):
                 idx_ =  oedock_from_smiles(receptor, smile, oe_options=oe_options)
-                self.results[self.idx].append(idx_)
-                self.waiting_futures[self.idx].append(i)
-                self.done_arr[self.idx].append(False)
+                results_.append(idx_)
+                done_arr_.append(i)
+                waiting_futures_.append(False)
+
+            self.results[cur_idx] = results_
+            self.done_arr[cur_idx] = done_arr_
+            self.waiting_futures[cur_idx] = waiting_futures_
             print(f"[{time.time()}] queued {len(smiles)} smiles with job id {self.idx}")
         else:
             idx_ =  oedock_from_smiles(receptor, smiles, oe_options=oe_options)
-            self.results[self.idx] = idx_
+            self.results[cur_idx] = idx_
             print(f"[{time.time()}] queued {smiles} with job id {self.idx}")
 
+        self.query_time[cur_idx] = time.time()
         return self.idx
 
     def wait_for_change(self, queryidx):
@@ -121,30 +185,42 @@ class OEDockingServer:
         if blocking:
             self.wait_for_change(queryidx)
 
-        if not isinstance(self.results[queryidx], list):
-            if not self.results[queryidx].done():
+        query = self.results[queryidx]
+        if not isinstance(query, list):
+            if not query.done():
                 return False
         else:
-            for i, res in enumerate(self.results[queryidx]):
-                if self.done_arr[queryidx][i]:
+            self.lock.acquire()
+            try:
+                donearr = self.done_arr[queryidx]
+            except:
+                exit()
+            finally:
+                self.lock.release()
+
+            for i, res in enumerate(query):
+                if donearr[i]:
                     continue
                 elif res.done():
-                    self.done_arr[queryidx][i] = True
+                    donearr[i] = True
                 else:
+                    self.done_arr[queryidx] = donearr
                     return False
 
-        self.query_time[queryidx] = time.time() - self.query_time[queryidx]
+        qtime = self.query_time[queryidx]
+        self.query_time[queryidx] = time.time() - qtime
         print(f"[{time.time()}] finished results for job {queryidx}.")
 
         return True
 
     def QueryResults(self, queryidx):
-        if not isinstance(self.results[queryidx], list):
-            results = self.results[queryidx].result()
+        results_queryidx = self.results[queryidx]
+        if not isinstance(results_queryidx, list):
+            results = results_queryidx.result()
             lenres = 1
         else:
             results = []
-            for res in self.results[queryidx]:
+            for res in results_queryidx:
                 results.append(res.result())
             lenres = len(results)
         print(f"[{time.time()}] sent results of size {lenres} for job {queryidx}. Total time {self.query_time[queryidx]}, {self.query_time[queryidx] / lenres}")
