@@ -84,11 +84,11 @@ class OEDockingServer:
         else:
             total = len(self.results[queryidx])
             for i, res in enumerate(self.results[queryidx]):
-                if self.done_arr[self.idx][i]:
+                if self.done_arr[queryidx][i]:
                     is_done_ = True
                 else:
                     is_done_ = res.done()
-                    self.done_arr[self.idx][i] = is_done_
+                    self.done_arr[queryidx][i] = is_done_
                 dcount += int(is_done_)
 
         return dcount, total
