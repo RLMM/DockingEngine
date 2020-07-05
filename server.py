@@ -1,7 +1,7 @@
 import copy
 import socket
 import time
-
+from concurrent.futures import wait, as_completed, FIRST_COMPLETED
 import parsl
 from parsl.config import Config
 from parsl.executors import ThreadPoolExecutor
@@ -10,8 +10,6 @@ try:
     from SocketServer import ThreadingMixIn
 except ImportError:
     from socketserver import ThreadingMixIn
-
-import numpy as np
 
 from openeye import oechem, oedocking
 
@@ -27,6 +25,9 @@ class OEDockingServer:
         self.results = {}
         self.idx = 0
         self.done_arr = {}
+        self.waiting_futures = {}
+        self.query_time = {}
+
         assert (len(receptors) == len(names))
         for res in zip(receptors, names):
             self.get_receptor(*res)
@@ -64,9 +65,13 @@ class OEDockingServer:
         if isinstance(smiles, list):
             self.results[self.idx] = []
             self.done_arr[self.idx] = []
-            for smile in smiles :
+            self.waiting_futures[self.idx] = []
+            self.query_time[self.idx] = time.time()
+
+            for i, smile in enumerate(smiles):
                 idx_ =  oedock_from_smiles(receptor, smile, oe_options=oe_options)
                 self.results[self.idx].append(idx_)
+                self.waiting_futures[self.idx].append(i)
                 self.done_arr[self.idx].append(False)
             print(f"[{time.time()}] queued {len(smiles)} smiles with job id {self.idx}")
         else:
@@ -76,31 +81,73 @@ class OEDockingServer:
 
         return self.idx
 
-    def QueryStatus(self, queryidx):
-        dcount = 0
+    def wait_for_change(self, queryidx):
         if not isinstance(self.results[queryidx], list):
-            dcount = int(self.results[queryidx].done())
-            total = 1
+            wait([self.results[queryidx]])
         else:
-            total = len(self.results[queryidx])
+            futures = self.results[queryidx]
+            futures_done, futures_not_done = wait([futures[i] for i in self.waiting_futures[queryidx]],
+                                                  return_when=FIRST_COMPLETED)
+            new_waitlist = []
+            for j in range(len(futures)):
+                if futures[j] in futures_not_done:
+                    new_waitlist.append(j)
+            self.waiting_futures[queryidx] = new_waitlist
+
+    # def QueryStatus(self, queryidx, blocking=True):
+    #     if blocking:
+    #         self.wait_for_change(queryidx)
+    #
+    #     dcount = 0
+    #     if not isinstance(self.results[queryidx], list):
+    #         dcount = int(self.results[queryidx].done())
+    #         total = 1
+    #     else:
+    #         total = len(self.results[queryidx])
+    #         for i, res in enumerate(self.results[queryidx]):
+    #             if self.done_arr[queryidx][i]:
+    #                 is_done_ = True
+    #             else:
+    #                 is_done_ = res.done()
+    #                 self.done_arr[queryidx][i] = is_done_
+    #             dcount += int(is_done_)
+    #
+    #     if dcount == total:
+    #         self.query_time[queryidx] = time.time() - self.query_time[queryidx]
+    #
+    #     return dcount, total
+
+    def QueryStatus(self, queryidx, blocking=False):
+        if blocking:
+            self.wait_for_change(queryidx)
+
+        if not isinstance(self.results[queryidx], list):
+            if not self.results[queryidx].done():
+                return False
+        else:
             for i, res in enumerate(self.results[queryidx]):
                 if self.done_arr[queryidx][i]:
-                    is_done_ = True
+                    continue
+                elif res.done():
+                    self.done_arr[queryidx][i] = True
                 else:
-                    is_done_ = res.done()
-                    self.done_arr[queryidx][i] = is_done_
-                dcount += int(is_done_)
+                    return False
 
-        return dcount, total
+        self.query_time[queryidx] = time.time() - self.query_time[queryidx]
+        print(f"[{time.time()}] finished results for job {queryidx}.")
+
+        return True
 
     def QueryResults(self, queryidx):
         if not isinstance(self.results[queryidx], list):
             results = self.results[queryidx].result()
+            lenres = 1
         else:
             results = []
             for res in self.results[queryidx]:
                 results.append(res.result())
-        print(f"[{time.time()}] sent results for job {queryidx}")
+            lenres = len(results)
+        print(f"[{time.time()}] sent results of size {lenres} for job {queryidx}. Total time {self.query_time[queryidx]}, {self.query_time[queryidx] / lenres}")
 
         return results
 
