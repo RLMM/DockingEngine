@@ -7,7 +7,8 @@ from parsl import python_app
 def mol_from_smiles(smiles):
     mol = oechem.OEMol()
     if not oechem.OESmilesToMol(mol, smiles):
-        raise ValueError("SMILES invalid for string", smiles)
+        print("SMILES invalid for string", smiles)
+        return None
     else:
         return mol
 

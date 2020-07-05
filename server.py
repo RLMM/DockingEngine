@@ -168,7 +168,7 @@ if __name__ == '__main__':
 
     config = Config(
         executors=[
-            ThreadPoolExecutor(max_threads=8)
+            ThreadPoolExecutor(max_threads=args.n_jobs)
         ],
     )
 
