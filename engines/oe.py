@@ -7,6 +7,7 @@ from parsl import python_app
 def mol_from_smiles(smiles):
     mol = oechem.OEMol()
     if not oechem.OESmilesToMol(mol, smiles):
+        print("SMILES invalid for string", smiles)
         raise ValueError("SMILES invalid for string", smiles)
     return mol
 
@@ -113,7 +114,7 @@ def dock_molecule(smiles, dock_obj, oe_options=None):
     if len(scores) > 0:
         return min(scores)
     else:
-        return None
+        return np.nan
 
 
 def safe_dock_score_(dock, mol, oe_options=None):
