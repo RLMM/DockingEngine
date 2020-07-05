@@ -1,5 +1,6 @@
 import copy
 import socket
+import time
 
 import parsl
 from parsl.config import Config
@@ -65,33 +66,35 @@ class OEDockingServer:
             for smile in smiles :
                 idx_ =  oedock_from_smiles(receptor, smile, oe_options=oe_options)
                 self.results[self.idx].append(idx_)
-                print("sent", smile, idx_, self.idx)
+            print(f"[{time.time()}] queued {len(smiles)} smiles with job id {self.idx}")
         else:
             idx_ =  oedock_from_smiles(receptor, smiles, oe_options=oe_options)
             self.results[self.idx] = idx_
-            print("sent", smiles, idx_, self.idx)
+            print(f"[{time.time()}] queued {smiles} with job id {self.idx}")
 
         return self.idx
 
-    def QueryStatus(self, queryidx):
+    def QueryStatus(self, queryidx, return_count=True):
         if not isinstance(self.results[queryidx], list):
-            print("no list")
-            return self.results[queryidx].done()
+            done = self.results[queryidx].done()
+            return (int(done), 1) if return_count else done
         else:
             done = True
+            dcount = 0
             for res in self.results[queryidx]:
-                done = done and res.done()
-            return done
+                is_done_ = res.done()
+                done = done and is_done_
+                dcount += int(is_done_)
+            return (int(done), len(self.results[queryidx])) if return_count else done
 
     def QueryResults(self, queryidx):
         if not isinstance(self.results[queryidx], list):
-            print("no list")
             results = self.results[queryidx].result()
         else:
             results = []
             for res in self.results[queryidx]:
                 results.append(res.result())
-            print(results)
+        print(f"[{time.time()}] sent results for job {queryidx}")
         return results
 
 

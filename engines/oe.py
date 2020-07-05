@@ -7,10 +7,8 @@ from parsl import python_app
 def mol_from_smiles(smiles):
     mol = oechem.OEMol()
     if not oechem.OESmilesToMol(mol, smiles):
-        print("SMILES invalid for string", smiles)
-        return None
-    else:
-        return mol
+        raise ValueError("SMILES invalid for string", smiles)
+    return mol
 
 class OEOptions:
     def __init__(self, **kwargs):
@@ -59,7 +57,6 @@ def enumerate_from_smiles(smiles, oe_options=None):
     try:
         molecule = mol_from_smiles(smiles)
     except ValueError:
-        print("NAN")
         return [None]
 
     results = []
