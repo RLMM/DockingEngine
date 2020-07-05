@@ -182,29 +182,16 @@ class OEDockingServer:
     #     return dcount, total
 
     def QueryStatus(self, queryidx, blocking=False):
-        if blocking:
-            self.wait_for_change(queryidx)
+        # if blocking:
+        #     self.wait_for_change(queryidx)
 
         query = self.results[queryidx]
         if not isinstance(query, list):
             if not query.done():
                 return False
         else:
-            self.lock.acquire()
-            try:
-                donearr = self.done_arr[queryidx]
-            except:
-                exit()
-            finally:
-                self.lock.release()
-
             for i, res in enumerate(query):
-                if donearr[i]:
-                    continue
-                elif res.done():
-                    donearr[i] = True
-                else:
-                    self.done_arr[queryidx] = donearr
+                if not res.done():
                     return False
 
         qtime = self.query_time[queryidx]
