@@ -136,14 +136,14 @@ class OEDockingServer:
             self.results[cur_idx] = results_
             self.done_arr[cur_idx] = done_arr_
             self.waiting_futures[cur_idx] = waiting_futures_
-            print(f"[{time.time()}] queued {len(smiles)} smiles with job id {self.idx}")
+            print(f"[{time.time()}] queued {len(smiles)} smiles with job id {cur_idx}")
         else:
             idx_ =  oedock_from_smiles(receptor, smiles, oe_options=oe_options)
             self.results[cur_idx] = idx_
-            print(f"[{time.time()}] queued {smiles} with job id {self.idx}")
+            print(f"[{time.time()}] queued {smiles} with job id {cur_idx}")
 
         self.query_time[cur_idx] = time.time()
-        return self.idx
+        return cur_idx
 
     def wait_for_change(self, queryidx):
         if not isinstance(self.results[queryidx], list):
@@ -202,6 +202,7 @@ class OEDockingServer:
 
     def QueryResults(self, queryidx):
         results_queryidx = self.results[queryidx]
+        qtime = self.query_time[queryidx]
         if not isinstance(results_queryidx, list):
             results = results_queryidx.result()
             lenres = 1
@@ -210,7 +211,7 @@ class OEDockingServer:
             for res in results_queryidx:
                 results.append(res.result())
             lenres = len(results)
-        print(f"[{time.time()}] sent results of size {lenres} for job {queryidx}. Total time {self.query_time[queryidx]}, {self.query_time[queryidx] / lenres}")
+        print(f"[{time.time()}] sent results of size {lenres} for job {queryidx}. Total time {qtime}, {qtime / lenres}")
 
         return results
 
