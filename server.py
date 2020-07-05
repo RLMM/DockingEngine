@@ -26,7 +26,7 @@ class OEDockingServer:
         self.receptors = {}
         self.results = {}
         self.idx = 0
-        self.done_arr = []
+        self.done_arr = {}
         assert (len(receptors) == len(names))
         for res in zip(receptors, names):
             self.get_receptor(*res)
@@ -63,11 +63,11 @@ class OEDockingServer:
         self.idx += 1
         if isinstance(smiles, list):
             self.results[self.idx] = []
-            self.done_arr = []
+            self.done_arr[self.idx] = []
             for smile in smiles :
                 idx_ =  oedock_from_smiles(receptor, smile, oe_options=oe_options)
                 self.results[self.idx].append(idx_)
-                self.done_arr.append(False)
+                self.done_arr[self.idx].append(False)
             print(f"[{time.time()}] queued {len(smiles)} smiles with job id {self.idx}")
         else:
             idx_ =  oedock_from_smiles(receptor, smiles, oe_options=oe_options)
@@ -77,22 +77,21 @@ class OEDockingServer:
         return self.idx
 
     def QueryStatus(self, queryidx):
+        dcount = 0
         if not isinstance(self.results[queryidx], list):
-            done = self.results[queryidx].done()
-            return int(done), 1
+            dcount = int(self.results[queryidx].done())
+            total = 1
         else:
-            done = True
-            dcount = 0
+            total = len(self.results[queryidx])
             for i, res in enumerate(self.results[queryidx]):
-                if self.done_arr[i]:
+                if self.done_arr[self.idx][i]:
                     is_done_ = True
                 else:
                     is_done_ = res.done()
-                    self.done_arr[i] = is_done_
-
-                done = done and is_done_
+                    self.done_arr[self.idx][i] = is_done_
                 dcount += int(is_done_)
-            return dcount, len(self.results[queryidx])
+
+        return dcount, total
 
     def QueryResults(self, queryidx):
         if not isinstance(self.results[queryidx], list):
@@ -102,6 +101,8 @@ class OEDockingServer:
             for res in self.results[queryidx]:
                 results.append(res.result())
         print(f"[{time.time()}] sent results for job {queryidx}")
+        del self.results[queryidx]
+        del self.done_arr[queryidx]
         return results
 
 
