@@ -101,8 +101,7 @@ class OEDockingServer:
             for res in self.results[queryidx]:
                 results.append(res.result())
         print(f"[{time.time()}] sent results for job {queryidx}")
-        del self.results[queryidx]
-        del self.done_arr[queryidx]
+
         return results
 
 
