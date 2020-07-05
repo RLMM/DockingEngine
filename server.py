@@ -52,7 +52,7 @@ class OEDockingServer:
             self.receptors[name] = receptor_mol
             return receptor_mol
 
-    def SubmitQuery(self, smiles, receptormol, receptor_name, oe_options=None):
+    def SubmitQuery(self, smiles, receptormol, receptor_name, oe_options=None, chunksize=1):
         receptor = self.get_receptor(receptormol, receptor_name)
         if oe_options is None:
             oe_options = OEOptions()
@@ -63,8 +63,6 @@ class OEDockingServer:
         if isinstance(smiles, list):
             self.results[self.idx] = []
             for smile in smiles :
-                # receptor_ = self.get_receptor(receptor, receptor_name)
-
                 idx_ =  oedock_from_smiles(receptor, smile, oe_options=oe_options)
                 self.results[self.idx].append(idx_)
                 print("sent", smile, idx_, self.idx)

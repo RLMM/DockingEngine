@@ -142,5 +142,12 @@ def oedock_from_smiles(receptor, smiles, oe_options=None):
     oe_options = oe_options or OEOptions()
 
     docker = init_oedock_from_receptor(receptor, oe_options=oe_options)
-    score = dock_molecule(smiles, docker, oe_options=oe_options)
-    return score
+
+    if isinstance(smiles, list):
+        scores = []
+        for smile in smiles:
+            scores.append(dock_molecule(smile, docker, oe_options=oe_options))
+        return scores
+    else:
+        score = dock_molecule(smiles, docker, oe_options=oe_options)
+        return score
